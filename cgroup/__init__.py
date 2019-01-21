@@ -16,38 +16,12 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-import getpass
 import os
 import pathlib
+import getpass
+import warnings
 
 from cgroup import path as cp
-
-
-def fix_permissions(user_name, group_name=None):
-    """
-    Change the permissions of all the subsystem to a specified username and group.
-    Will run as root using "sudo". The current user must have "sudo" permissions without password.
-    :param user_name: The user name to change to
-    :param group_name: (Optional) A group name
-    :return: None
-    """
-    owner = str(user_name)
-    if group_name:
-        owner = '%s:%s' % (user_name, group_name)
-
-    shell.run(['chown', '-R', owner, cp.CGROUP_PATH], as_root=True)
-    shell.run(['chmod', '-R', "770", cp.CGROUP_PATH], as_root=True)
-
-
-def fix_permissions_current_user(group_name=None):
-    """
-    Fix permissions for script's user
-    :param group_name: (Optional) A group name
-    :return: The script's username
-    """
-    user_name = getpass.getuser()
-    fix_permissions(user_name, group_name)
-    return user_name
 
 
 class Cgroup:
@@ -61,21 +35,22 @@ class Cgroup:
     >>> Cgroup('cpu/system/daemon')['cpu.shares'] = 10
 
     >>> c = Cgroup('system/daemon')
-    >>> c['subgroup1']['cpu.shares'] = 10
-    >>> c.subsystem('cpu')['subgroup1']['cpu.shares'] = 10
+    >>> c['subgroup1', 'cpu.shares'] = 10
+    >>> c.subsystem('cpu')['subgroup1', 'cpu.shares'] = 10
 
-    >>> current_shares = c['subgroup2']['cpu.shares']
+    >>> current_shares = c['subgroup2', 'cpu.shares']
 
     >>> c3 = c['subgroup3']
-    >>> known_tasks = c3.tasks()
-    >>> c3.add_tasks(t1, t2, t3, ...)
+    >>> known_tasks = c3.tasks
+    >>> my_tasks = '1234', '5678', '9012'
+    >>> c3.add_tasks(*my_tasks)
     >>> c3['cpu.shares'] = 100
 
     # Will add the tasks to all the subsystems under that path
-    >>> Cgroup('system/daemon').add_tasks(t1, t2, t3)
+    >>> Cgroup('system/daemon').add_tasks(*my_tasks)
 
     # Will add the tasks to cpu and memory subsystems under that path
-    >>> Cgroup('system/daemon', subsystems=['cpu','memory']).add_tasks(t1, t2, t3)
+    >>> Cgroup('system/daemon', subsystems=['cpu', 'memory']).add_tasks(*my_tasks)
     """
 
     def __init__(self, *path, subsystems=None, create=False):
@@ -87,7 +62,7 @@ class Cgroup:
         self.path_parts = pathlib.Path(*path).parts
         # First argument of the path might be the subsystem
         if len(self.path_parts) > 0 and self.path_parts[0] in self.subsystems:
-            self.subsystems = (self.path_parts[0],)
+            self.subsystems = {self.path_parts[0]}
             self.path_parts = self.path_parts[1:]
 
         ret = cp.supported_subsystems_path(*self.path_parts, lookup_subsystems=self.subsystems, create=create)
@@ -99,6 +74,31 @@ class Cgroup:
             self.subsystems = set(ret)
 
     ###########################################################################
+    # Permissions
+    ###########################################################################
+
+    def fix_permissions(self, user_name, group_name=None):
+        """
+        Change the permissions of all the subsystem to a specified username and group.
+        Will run as root using "sudo". The current user must have "sudo" permissions without password.
+        :param user_name: The user name to change to
+        :param group_name: (Optional) A group name
+        :return: None
+        """
+        cp.fix_permissions(*self.path_parts, lookup_subsystems=self.subsystems, user_name=user_name,
+                           group_name=group_name)
+
+    def fix_permissions_current_user(self, group_name=None):
+        """
+        Fix permissions for script's user
+        :param group_name: (Optional) A group name
+        :return: The script's username
+        """
+        user_name = getpass.getuser()
+        self.fix_permissions(user_name, group_name)
+        return user_name
+
+    ###########################################################################
     # Lookup
     ###########################################################################
 
@@ -106,7 +106,7 @@ class Cgroup:
     def path(self):
         """ Return the full path of the cgroup as string """
         if self.is_root:
-            return "/"
+            return os.path.sep
         else:
             return os.path.join(*self.path_parts)
 
@@ -267,7 +267,7 @@ class Cgroup:
         try:
             self.root.add_tasks(*tasks_to_move)
         except Exception as e:
-            self.log_warning("Failed to clear tasks: %s", e)
+            warnings.warn(f"Failed to clear tasks: {e}.", RuntimeWarning)
 
     def delete(self, recursive=False):
         """
@@ -286,8 +286,8 @@ class Cgroup:
         failed_subsystems = cp.subsystems_delete_cgroup(*self.path_parts,
                                                         lookup_subsystems=self.subsystems)
         if failed_subsystems:
-            self.log_warning("Cannot delete on subsystems: %s", failed_subsystems)
-        self.subsystems = tuple(failed_subsystems)
+            warnings.warn(f"Cannot delete {self.path_parts} on subsystems: {failed_subsystems}.", RuntimeWarning)
+        self.subsystems = set(failed_subsystems.keys())
 
     def clear_and_delete(self, recursive=False):
         """
@@ -299,7 +299,7 @@ class Cgroup:
         self.delete(recursive=recursive)
 
     ###########################################################################
-    # Array-like access-functions
+    # dict-like API
     ###########################################################################
 
     def get(self, key, default_value=None, create=False):
@@ -315,7 +315,10 @@ class Cgroup:
         if self.is_root and key in self.subsystems:
             return self.subsystem(key)
 
-        path_type, extra_data = cp.interpret_cgroup_path(*self.path_parts, key,
+        if type(key) not in (tuple, list):
+            key = (key,)
+
+        path_type, extra_data = cp.interpret_cgroup_path(*self.path_parts, *key,
                                                          lookup_subsystems=self.subsystems)
         # If a file, read it
         if path_type == "file":
@@ -330,22 +333,17 @@ class Cgroup:
         else:
             return default_value
 
-    def __getitem__(self, key):
-        """ Wrapper for get(). Raise an exception if not found. """
-        default_ret = {}
-        ret = self.get(key, default_ret)
-        if ret is default_ret:
-            raise ValueError("No subsystem, sub-group or file with that name")
-        return ret
-
-    def __setitem__(self, key, value):
+    def put(self, key, value):
         """
         Write a content to a cgroup file. If the key is not a file, will raise an exception
         :param key: The file name
         :param value: The content to append
         :return: None
         """
-        path_type, extra_data = cp.interpret_cgroup_path(*self.path_parts, key,
+        if type(key) not in (tuple, list):
+            key = (key,)
+
+        path_type, extra_data = cp.interpret_cgroup_path(*self.path_parts, *key,
                                                          lookup_subsystems=self.subsystems)
         if path_type is 'dir':
             raise ValueError("Cannot write to a cgroup folder")
@@ -356,9 +354,24 @@ class Cgroup:
         with open(extra_data, "w") as f:
             return f.write("%s\n" % value)
 
+    def __getitem__(self, key):
+        """ Wrapper for get(). Raise an exception if not found. """
+        default_ret = {}
+        ret = self.get(key, default_ret)
+        if ret is default_ret:
+            raise ValueError("No subsystem, sub-group or file with that name.")
+        return ret
+
+    def __setitem__(self, key, value):
+        """ Wrapper for put(). """
+        return self.put(key, value)
+
     def __delitem__(self, key):
         """ Delete a sub cgroup """
-        path_type, extra_data = cp.interpret_cgroup_path(*self.path_parts, key,
+        if type(key) not in (tuple, list):
+            key = (key,)
+
+        path_type, extra_data = cp.interpret_cgroup_path(*self.path_parts, *key,
                                                          lookup_subsystems=self.subsystems)
         if path_type is 'file':
             raise ValueError("Cannot delete a cgroup file")

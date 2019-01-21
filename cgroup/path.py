@@ -18,7 +18,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 import os
 import pathlib
-from typing import Union, Iterable, Optional
+import subprocess
+from typing import Union, Iterable, Optional, Generator, Set, Tuple, List, Dict
 
 from cgroup.errors import CGroupLookupError, CGroupAccessViolation
 
@@ -34,7 +35,7 @@ TYPING_LOOKUP = Union[str, Iterable, None]
 # Subsystems lookup
 ###########################################################################
 
-def subsystem_path(subsystem: str, *path: str):
+def subsystem_path(subsystem: str, *path: str) -> str:
     """
     Generate a path to a subsystem sub path
 
@@ -53,7 +54,7 @@ def subsystem_path(subsystem: str, *path: str):
     return os.path.join(CGROUP_PATH, subsystem, *path)
 
 
-def iter_subsystems(lookup_subsystems: TYPING_LOOKUP = None, include_aliases: bool = False):
+def iter_subsystems(lookup_subsystems: TYPING_LOOKUP = None, include_aliases: bool = False) -> Generator[str]:
     """
     Traverse all the available subsystems on this machine.
 
@@ -85,7 +86,8 @@ def iter_subsystems(lookup_subsystems: TYPING_LOOKUP = None, include_aliases: bo
         yield s
 
 
-def iter_subsystem_path(*path: str, lookup_subsystems: TYPING_LOOKUP = None, include_aliases: bool = False):
+def iter_subsystem_path(*path: str, lookup_subsystems: TYPING_LOOKUP = None,
+                        include_aliases: bool = False) -> Generator[str]:
     """
     Traverse all the available subsystem paths on this machine.
 
@@ -105,7 +107,7 @@ def iter_subsystem_path(*path: str, lookup_subsystems: TYPING_LOOKUP = None, inc
         yield subsystem_path(s, *path)
 
 
-def validate_subsystem_path(subsystem: str, *path: str, create: bool = False):
+def validate_subsystem_path(subsystem: str, *path: str, create: bool = False) -> str:
     """
     Validate a subsystem path is valid, and create the path if required.
 
@@ -145,7 +147,7 @@ def validate_subsystem_path(subsystem: str, *path: str, create: bool = False):
     return sub_path
 
 
-def supported_subsystems_path(*path: str, lookup_subsystems: TYPING_LOOKUP = None, create: bool = False):
+def supported_subsystems_path(*path: str, lookup_subsystems: TYPING_LOOKUP = None, create: bool = False) -> Set[str]:
     """
     Return a list of subsystem that have a specific path.
 
@@ -179,7 +181,7 @@ def supported_subsystems_path(*path: str, lookup_subsystems: TYPING_LOOKUP = Non
 # Cgroup lookup
 ###########################################################################
 
-def cgroups_content(subsystem: str, *path: str):
+def cgroups_content(subsystem: str, *path: str) -> Tuple[List[str], List[str]]:
     """
     The content of a cgroup.
 
@@ -201,7 +203,7 @@ def cgroups_content(subsystem: str, *path: str):
     return dirs, files
 
 
-def sub_cgroups(subsystem: str, *path: str):
+def sub_cgroups(subsystem: str, *path: str) -> List[str]:
     """
     The sub cgroups in a cgroup.
 
@@ -220,7 +222,7 @@ def sub_cgroups(subsystem: str, *path: str):
     return cgroups_content(subsystem, *path)[0]
 
 
-def cgroup_files(subsystem: str, *path: str):
+def cgroup_files(subsystem: str, *path: str) -> List[str]:
     """
     The supported files in a cgroup.
 
@@ -239,7 +241,7 @@ def cgroup_files(subsystem: str, *path: str):
     return cgroups_content(subsystem, *path)[1]
 
 
-def subsystems_sub_cgroups(*path: str, lookup_subsystems: TYPING_LOOKUP = None):
+def subsystems_sub_cgroups(*path: str, lookup_subsystems: TYPING_LOOKUP = None) -> Dict[str, Set[str]]:
     """
     Find the subsystems that support each sub-cgroup of a specific path.
 
@@ -265,7 +267,8 @@ def subsystems_sub_cgroups(*path: str, lookup_subsystems: TYPING_LOOKUP = None):
     return ret
 
 
-def interpret_cgroup_path(*path: str, lookup_subsystems: TYPING_LOOKUP = None):
+def interpret_cgroup_path(*path: str,
+                          lookup_subsystems: TYPING_LOOKUP = None)-> Tuple[Optional[str], Union[str, Set[str], None]]:
     """
     Interpret if a cgroup path is a file/directory or not exist in any of the sub-systems.
 
@@ -320,10 +323,44 @@ def interpret_cgroup_path(*path: str, lookup_subsystems: TYPING_LOOKUP = None):
 
 
 ###########################################################################
+# Permissions
+###########################################################################
+
+def fix_permissions(*path: str, lookup_subsystems: TYPING_LOOKUP = None,
+                    user_name: str = 'root', group_name: Optional[str] = None) -> None:
+    """
+    Change the permissions of all the subsystem at a specific path to a specified username and group.
+    Will run as root using "sudo". The current user must have "sudo" permissions without password.
+
+    Parameters
+    ----------
+    path: str
+        The path to check.
+    lookup_subsystems: str, Iterable, optional
+        A list of cgroup subsystem names to lookup.
+    user_name: str
+        The new owner user name.
+    group_name: str, optional
+        The new owner group.
+    """
+    owner = str(user_name)
+    if group_name:
+        owner = '%s:%s' % (user_name, group_name)
+
+    paths = (subsystem_path(s, *path) for s in iter_subsystems(lookup_subsystems))
+    for p in paths:
+        # sudo:
+        # -k, --reset-timestamp         invalidate timestamp file
+        # -n, --non-interactive         non-interactive mode, no prompts are used
+        subprocess.run(["sudo", "-k", "-n", 'chown', '-R', owner, p])
+        subprocess.run(["sudo", "-k", "-n", 'chmod', '-R', "770", p])
+
+
+###########################################################################
 # Tasks and Processes
 ###########################################################################
 
-def _normalize_process_id(proc_id: Union[str, int]):
+def _normalize_process_id(proc_id: Union[str, int]) -> str:
     """
     Normalize a process/task ID to string.
 
@@ -350,7 +387,7 @@ def _normalize_process_id(proc_id: Union[str, int]):
         raise ValueError(f"Process/task ID must be an integer or a string, but got {type(proc_id)} instead.")
 
 
-def _normalize_process_id_list(proc_ids: Union[str, int, Iterable[str], Iterable[int]]):
+def _normalize_process_id_list(proc_ids: Union[str, int, Iterable[str], Iterable[int]]) -> List[str]:
     """
     Normalize the process/task ID to a list/tuple of strings.
 
@@ -365,12 +402,12 @@ def _normalize_process_id_list(proc_ids: Union[str, int, Iterable[str], Iterable
         Of process/tasks IDs.
     """
     try:
-        return _normalize_process_id(proc_ids),
+        return [_normalize_process_id(proc_ids)]
     except ValueError:
         return [_normalize_process_id(i) for i in proc_ids]
 
 
-def _cgroup_procs(fname: str, subsystem: str, *path: str):
+def _cgroup_procs(fname: str, subsystem: str, *path: str) -> Generator[str]:
     """
     Traverse the process/tasks of a cgroup.
 
@@ -396,7 +433,8 @@ def _cgroup_procs(fname: str, subsystem: str, *path: str):
         yield p.strip()
 
 
-def _add_procs(fname: str, subsystem: str, proc_ids: Union[str, int, Iterable[str], Iterable[int]], *path: str):
+def _add_procs(fname: str, subsystem: str, proc_ids: Union[str, int, Iterable[str], Iterable[int]],
+               *path: str) -> None:
     """
     Add process/task IDs to subsystem path.
 
@@ -418,7 +456,7 @@ def _add_procs(fname: str, subsystem: str, proc_ids: Union[str, int, Iterable[st
 
 
 def _subsystems_add_procs(fname: str, proc_ids: Union[str, int, Iterable[str], Iterable[int]], *path: str,
-                          lookup_subsystems: TYPING_LOOKUP = None):
+                          lookup_subsystems: TYPING_LOOKUP = None) -> None:
     """
     Add process/task IDs to all subsystems path.
 
@@ -449,7 +487,7 @@ def _subsystems_add_procs(fname: str, proc_ids: Union[str, int, Iterable[str], I
         raise CGroupAccessViolation(None, CGroupAccessViolation.Type.FAILED_WRITE, failed)
 
 
-def _subsystems_cgroup_procs_intersection(fname: str, *path: str, lookup_subsystems: TYPING_LOOKUP = None):
+def _subsystems_cgroup_procs_intersection(fname: str, *path: str, lookup_subsystems: TYPING_LOOKUP = None) -> Set[str]:
     """
     Intersection of the processes/tasks that belong to this path in all subsystem
 
@@ -477,7 +515,7 @@ def _subsystems_cgroup_procs_intersection(fname: str, *path: str, lookup_subsyst
     return ret
 
 
-def task_cgroups(task: Union[str, int]):
+def task_cgroups(task: Union[str, int]) -> Dict[str, Set[str]]:
     """
     Get the cgroups of the task in all the subsystems.
 
@@ -513,7 +551,7 @@ def task_cgroups(task: Union[str, int]):
     return res
 
 
-def cgroup_tasks(subsystem: str, *path: str):
+def cgroup_tasks(subsystem: str, *path: str) -> Generator[str]:
     """
     Traverse the tasks of a cgroup.
 
@@ -536,7 +574,7 @@ def cgroup_tasks(subsystem: str, *path: str):
     yield from _cgroup_procs(TASKS_FILE_NAME, subsystem, *path)
 
 
-def cgroup_procs(subsystem: str, *path: str):
+def cgroup_procs(subsystem: str, *path: str) -> Generator[str]:
     """
     Traverse the processes of a cgroup.
 
@@ -559,7 +597,7 @@ def cgroup_procs(subsystem: str, *path: str):
     yield from _cgroup_procs(PROCS_FILE_NAME, subsystem, *path)
 
 
-def add_tasks(subsystem: str, task_ids: Union[str, int, Iterable[str], Iterable[int]], *path: str):
+def add_tasks(subsystem: str, task_ids: Union[str, int, Iterable[str], Iterable[int]], *path: str) -> None:
     """
     Add task IDs to subsystem path.
 
@@ -579,7 +617,7 @@ def add_tasks(subsystem: str, task_ids: Union[str, int, Iterable[str], Iterable[
     _add_procs(TASKS_FILE_NAME, subsystem, task_ids, *path)
 
 
-def add_procs(subsystem: str, proc_ids: Union[str, int, Iterable[str], Iterable[int]], *path: str):
+def add_procs(subsystem: str, proc_ids: Union[str, int, Iterable[str], Iterable[int]], *path: str) -> None:
     """
     Add process IDs to subsystem path.
 
@@ -600,7 +638,7 @@ def add_procs(subsystem: str, proc_ids: Union[str, int, Iterable[str], Iterable[
 
 
 def subsystems_add_tasks(task_ids: Union[str, int, Iterable[str], Iterable[int]], *path: str,
-                         lookup_subsystems: TYPING_LOOKUP = None):
+                         lookup_subsystems: TYPING_LOOKUP = None) -> None:
     """
     Add task IDs to all subsystems path.
 
@@ -626,7 +664,7 @@ def subsystems_add_tasks(task_ids: Union[str, int, Iterable[str], Iterable[int]]
 
 
 def subsystems_add_procs(proc_ids: Union[str, int, Iterable[str], Iterable[int]], *path: str,
-                         lookup_subsystems: TYPING_LOOKUP = None):
+                         lookup_subsystems: TYPING_LOOKUP = None) -> None:
     """
     Add process IDs to all subsystems path.
 
@@ -651,7 +689,7 @@ def subsystems_add_procs(proc_ids: Union[str, int, Iterable[str], Iterable[int]]
     _subsystems_add_procs(PROCS_FILE_NAME, proc_ids, *path, lookup_subsystems=lookup_subsystems)
 
 
-def subsystems_cgroup_tasks(*path: str, lookup_subsystems: TYPING_LOOKUP = None):
+def subsystems_cgroup_tasks(*path: str, lookup_subsystems: TYPING_LOOKUP = None) -> Set[str]:
     """
     Intersection of the tasks that belong to this path in all subsystem
 
@@ -675,7 +713,7 @@ def subsystems_cgroup_tasks(*path: str, lookup_subsystems: TYPING_LOOKUP = None)
     return _subsystems_cgroup_procs_intersection(TASKS_FILE_NAME, *path, lookup_subsystems=lookup_subsystems)
 
 
-def subsystems_cgroup_procs(*path: str, lookup_subsystems: TYPING_LOOKUP = None):
+def subsystems_cgroup_procs(*path: str, lookup_subsystems: TYPING_LOOKUP = None) -> Set[str]:
     """
     Intersection of the processes that belong to this path in all subsystem
 
@@ -703,7 +741,7 @@ def subsystems_cgroup_procs(*path: str, lookup_subsystems: TYPING_LOOKUP = None)
 # Cleanup
 ###########################################################################
 
-def delete_cgroup(subsystem: str, *path: str):
+def delete_cgroup(subsystem: str, *path: str) -> None:
     """
     Delete a cgroup.
 
@@ -731,7 +769,7 @@ def delete_cgroup(subsystem: str, *path: str):
     os.removedirs(cgroup_path)
 
 
-def subsystems_delete_cgroup(*path: str, lookup_subsystems: TYPING_LOOKUP = None):
+def subsystems_delete_cgroup(*path: str, lookup_subsystems: TYPING_LOOKUP = None) -> Dict[str, str]:
     """
     Delete a cgroup in all the subsystems.
 
@@ -762,7 +800,7 @@ def subsystems_delete_cgroup(*path: str, lookup_subsystems: TYPING_LOOKUP = None
 ###########################################################################
 
 
-def init_cgroup_default(subsystem: str, *path: str, default_data: Optional[dict] = None):
+def init_cgroup_default(subsystem: str, *path: str, default_data: Optional[dict] = None) -> Dict[str, str]:
     """
     Init the cgroup to default data if no data is set.
 
@@ -809,7 +847,7 @@ def init_cgroup_default(subsystem: str, *path: str, default_data: Optional[dict]
     return output_data
 
 
-def init_cgroup_settings_from_parents(subsystem: str, *path: str, file_list: Optional[Iterable] = None):
+def init_cgroup_settings_from_parents(subsystem: str, *path: str, file_list: Optional[Iterable] = None) -> None:
     """
     Init the settings of a cgroup by its parents.
     Used to fix a bug in cpuset.
