@@ -21,7 +21,7 @@ import pathlib
 import subprocess
 from typing import Union, Iterable, Optional, Generator, Set, Tuple, List, Dict
 
-from cgroup.errors import CGroupLookupError, CGroupAccessViolation
+from cgroups.errors import CGroupLookupError, CGroupAccessViolation
 
 CGROUP_PATH = "/sys/fs/cgroup"
 TASKS_FILE_NAME = "tasks"

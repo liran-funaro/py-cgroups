@@ -21,7 +21,7 @@ import pathlib
 import getpass
 import warnings
 
-from cgroup import path as cp
+from cgroups import path as cp
 
 
 class Cgroup:

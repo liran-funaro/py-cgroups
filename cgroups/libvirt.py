@@ -16,7 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-from cgroup import Cgroup
+from cgroups import Cgroup
 
 LIBVIRT_MACHINES_CGROUP = "machine/%s.libvirt-qemu"
 
@@ -54,20 +54,22 @@ class LibvirtQemuCgroup(Cgroup):
     def __init__(self, vm_name, subsystems=None):
         self.vm_name = vm_name
         path = vm_cgroup_path(vm_name)
-        Cgroup.__init__(self, path, subsystems=subsystems, create=False)
+        super().__init__(path, subsystems=subsystems, create=False)
 
     def add_tasks(self, *tasks):
         """ We don't want to add tasks to libvirt cgroup """
+        raise NotImplementedError('Cannot add tasks to a virtual machine cgroup.')
 
     def add_procs(self, *tasks):
         """ We don't want to add processes to libvirt cgroup """
+        raise NotImplementedError('Cannot add processes to a virtual machine cgroup.')
 
     @property
     def tasks(self):
         """ We want to have all the tasks that belongs to a VM """
-        return super(self.__class__, self).hierarchy_tasks()
+        return super().hierarchy_tasks()
 
     @property
     def procs(self):
         """ We want to have all the processes that belongs to a VM """
-        return super(self.__class__, self).hierarchy_procs()
+        return super().hierarchy_procs()
