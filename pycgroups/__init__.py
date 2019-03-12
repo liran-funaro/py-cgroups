@@ -1,5 +1,5 @@
 """
-Author: Liran Funaro <funaro@cs.technion.ac.il>
+Author: Liran Funaro <liran.funaro@gmail.com>
 
 Copyright (C) 2006-2018 Liran Funaro
 
@@ -21,7 +21,7 @@ import pathlib
 import getpass
 import warnings
 
-from cgroups import path as cp
+from pycgroups import path as cp
 
 
 class Cgroup:

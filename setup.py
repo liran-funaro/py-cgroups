@@ -1,5 +1,5 @@
 """
-Author: Liran Funaro <funaro@cs.technion.ac.il>
+Author: Liran Funaro <liran.funaro@gmail.com>
 
 Copyright (C) 2006-2018 Liran Funaro
 
@@ -19,19 +19,18 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from setuptools import setup
 
 setup(
-    name="cgroups",
+    name="pycgroups",
     version="0.1.0",
-    py_modules=['cgroups'],
+    py_modules=['pycgroups'],
     description="",
     author="Liran Funaro",
-    author_email="fonaro+pycgroups@gmail.com",
+    author_email="liran.funaro+pycgroups@gmail.com",
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url="https://bitbucket.org/fonaro/py-cgroups",
+    url="https://bitbucket.org/funaro/py-cgroups",
     keywords='cgroups',
     license='GPL',
     classifiers=[
-        "Programming Language :: Python :: 2",
         "Programming Language :: Python :: 3",
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",

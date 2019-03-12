@@ -1,5 +1,5 @@
 """
-Author: Liran Funaro <funaro@cs.technion.ac.il>
+Author: Liran Funaro <liran.funaro@gmail.com>
 
 Copyright (C) 2006-2018 Liran Funaro
 
@@ -16,7 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
-from cgroups import Cgroup
+from pycgroups import Cgroup
 
 LIBVIRT_MACHINES_CGROUP = "machine/%s.libvirt-qemu"
 

@@ -1,5 +1,5 @@
 """
-Author: Liran Funaro <funaro@cs.technion.ac.il>
+Author: Liran Funaro <liran.funaro@gmail.com>
 
 Copyright (C) 2006-2018 Liran Funaro
 
@@ -21,7 +21,7 @@ import pathlib
 import subprocess
 from typing import Union, Iterable, Optional, Generator, Set, Tuple, List, Dict
 
-from cgroups.errors import CGroupLookupError, CGroupAccessViolation
+from pycgroups.errors import CGroupLookupError, CGroupAccessViolation
 
 CGROUP_PATH = "/sys/fs/cgroup"
 TASKS_FILE_NAME = "tasks"
@@ -54,7 +54,8 @@ def subsystem_path(subsystem: str, *path: str) -> str:
     return os.path.join(CGROUP_PATH, subsystem, *path)
 
 
-def iter_subsystems(lookup_subsystems: TYPING_LOOKUP = None, include_aliases: bool = False) -> Generator[str]:
+def iter_subsystems(lookup_subsystems: TYPING_LOOKUP = None,
+                    include_aliases: bool = False) -> Generator[str, None, None]:
     """
     Traverse all the available subsystems on this machine.
 
@@ -87,7 +88,7 @@ def iter_subsystems(lookup_subsystems: TYPING_LOOKUP = None, include_aliases: bo
 
 
 def iter_subsystem_path(*path: str, lookup_subsystems: TYPING_LOOKUP = None,
-                        include_aliases: bool = False) -> Generator[str]:
+                        include_aliases: bool = False) -> Generator[str, None, None]:
     """
     Traverse all the available subsystem paths on this machine.
 
@@ -407,7 +408,7 @@ def _normalize_process_id_list(proc_ids: Union[str, int, Iterable[str], Iterable
         return [_normalize_process_id(i) for i in proc_ids]
 
 
-def _cgroup_procs(fname: str, subsystem: str, *path: str) -> Generator[str]:
+def _cgroup_procs(fname: str, subsystem: str, *path: str) -> Generator[str, None, None]:
     """
     Traverse the process/tasks of a cgroup.
 
@@ -551,7 +552,7 @@ def task_cgroups(task: Union[str, int]) -> Dict[str, Set[str]]:
     return res
 
 
-def cgroup_tasks(subsystem: str, *path: str) -> Generator[str]:
+def cgroup_tasks(subsystem: str, *path: str) -> Generator[str, None, None]:
     """
     Traverse the tasks of a cgroup.
 
@@ -574,7 +575,7 @@ def cgroup_tasks(subsystem: str, *path: str) -> Generator[str]:
     yield from _cgroup_procs(TASKS_FILE_NAME, subsystem, *path)
 
 
-def cgroup_procs(subsystem: str, *path: str) -> Generator[str]:
+def cgroup_procs(subsystem: str, *path: str) -> Generator[str, None, None]:
     """
     Traverse the processes of a cgroup.
 
