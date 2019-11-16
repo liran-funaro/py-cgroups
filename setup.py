@@ -27,7 +27,7 @@ setup(
     author_email="liran.funaro+pycgroups@gmail.com",
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url="https://bitbucket.org/funaro/py-cgroups",
+    url="https://github.com/liran-funaro/py-cgroups",
     keywords='cgroups',
     license='GPL',
     classifiers=[
